@@ -24,7 +24,7 @@ from cms.exceptions import PublicIsUnmodifiable, PublicVersionNeeded, LanguageEr
 from cms.models.managers import PageManager, PageNodeManager
 from cms.utils import i18n
 from cms.utils.conf import get_cms_setting
-from cms.utils.page import get_clean_username
+from cms.utils.page import get_clean_username, get_available_slug, generate_title_translations_from_canonical
 from cms.utils.i18n import get_current_language
 
 from menus.menu_pool import menu_pool
@@ -232,6 +232,12 @@ class Page(models.Model):
         TreeNode,
         related_name='cms_pages',
         on_delete=models.CASCADE,
+    )
+
+    canonical = models.ForeignKey(
+        'self',
+        blank=True,
+        null=True,
     )
 
     # Managers
@@ -860,6 +866,7 @@ class Page(models.Model):
             self.mark_descendants_pending(language)
 
     def save(self, **kwargs):
+
         # delete template cache
         if hasattr(self, '_template_cache'):
             delattr(self, '_template_cache')
@@ -875,6 +882,7 @@ class Page(models.Model):
 
         if created:
             self.created_by = self.changed_by
+
         super(Page, self).save(**kwargs)
 
     def save_base(self, *args, **kwargs):
@@ -980,6 +988,8 @@ class Page(models.Model):
         :returns: True if page was successfully published.
         """
         from cms.utils.permissions import get_current_user_name
+        from cms import api
+        from cms.extensions import extension_pool
 
         # Publish can only be called on draft pages
         if not self.publisher_is_draft:
@@ -1008,6 +1018,7 @@ class Page(models.Model):
         public_page.publisher_is_draft = False
         public_page.languages = ','.join(public_languages)
         public_page.node = self.node
+        public_page.canonical = self.canonical
         public_page.save()
 
         # Copy the page translation (title) matching language
@@ -1050,6 +1061,57 @@ class Page(models.Model):
             menu=True,
             placeholder=True,
         )
+
+        # Find related pages that define the current one as canonical to update them too.
+        if self.pk:
+            from cms.extensions import extension_pool
+            canonicals_draft = Page.objects.filter(
+                canonical=public_page.pk,
+                publisher_is_draft=True
+            )
+
+            for canonical in canonicals_draft:
+                # delete existing placeholders, they will be re-created from the current page
+                for placeholder in canonical.placeholders.iterator():
+                    placeholder.delete()
+
+                # copy the placeholders (and plugins on those placeholders!)
+                for placeholder in public_page.placeholders.iterator():
+                    new_placeholder = copy.copy(placeholder)
+                    new_placeholder.pk = None
+                    new_placeholder.save()
+                    canonical.placeholders.add(new_placeholder)
+
+                    # Copy the placeholder for each language
+                    for lang in self.get_languages():
+                        # Create translation if it does not exist
+                        if lang not in canonical.get_languages():
+                            slug, path, title = generate_title_translations_from_canonical(
+                                canonical.node.parent,
+                                public_page, #  use public_page (self has outdated translations)
+                                canonical.node.site,
+                                lang
+                            )
+
+                            title_kwargs = {
+                                'page': canonical,
+                                'language': lang,
+                                'slug': slug,
+                                'path': path,
+                                'title': title,
+                            }
+                            api.create_title(**title_kwargs)
+
+                        # Go on with the copy
+                        placeholder.copy_plugins(new_placeholder, language=lang)
+
+                for extension in extension_pool.get_page_extensions(canonical):
+                    extension.delete()
+                extension_pool.copy_extensions(public_page, canonical)
+                canonical.save()
+                for lang in self.get_languages():
+                    canonical.publish(lang)
+
         return True
 
     def clear_cache(self, language=None, menu=False, placeholder=False):
