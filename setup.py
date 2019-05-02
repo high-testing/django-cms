@@ -37,7 +37,7 @@ setup(
     author='Divio AG and contributors',
     author_email='info@divio.ch',
     name='django-cms',
-    version=cms.__version__,
+    version=cms.__hightesting_version__,
     description='An Advanced Django CMS',
     long_description=open(os.path.join(os.path.dirname(__file__), 'README.rst')).read(),
     url='https://www.django-cms.org/',
