@@ -99,6 +99,10 @@ def flatten(nodes):
     return flat
 
 
+def get_site(context):
+    return Site.objects.get_current(context['request'])
+
+
 class ShowMenu(InclusionTag):
     """
     render a nested list of all children of the pages
@@ -122,24 +126,28 @@ class ShowMenu(InclusionTag):
         StringArgument('namespace', default=None, required=False),
         StringArgument('root_id', default=None, required=False),
         Argument('next_page', default=None, required=False),
+        IntegerArgument('site_id', default=None, required=False),
     )
 
     def get_context(self, context, from_level, to_level, extra_inactive,
-                    extra_active, template, namespace, root_id, next_page):
+                    extra_active, template, namespace, root_id, next_page, site_id):
         try:
             # If there's an exception (500), default context_processors may not be called.
             request = context['request']
         except KeyError:
             return {'template': 'menu/empty.html'}
 
+        if not site_id:
+            site_id = get_site(context).id
+
         if next_page:
             children = next_page.children
         else:
             # new menu... get all the data so we can save a lot of queries
-            menu_renderer = context.get('cms_menu_renderer')
+            menu_renderer = context.get('cms_menu_renderer_%s' % site_id)
 
             if not menu_renderer:
-                menu_renderer = menu_pool.get_renderer(request)
+                menu_renderer = menu_pool.get_renderer(request, site=Site.objects.get(pk=site_id))
 
             nodes = menu_renderer.get_nodes(namespace, root_id)
             if root_id:  # find the root id and cut the nodes
@@ -206,9 +214,10 @@ class ShowSubMenu(InclusionTag):
         Argument('root_level', default=None, required=False),
         IntegerArgument('nephews', default=100, required=False),
         Argument('template', default='menu/sub_menu.html', required=False),
+        IntegerArgument('site_id', default=None, required=False),
     )
 
-    def get_context(self, context, levels, root_level, nephews, template):
+    def get_context(self, context, levels, root_level, nephews, template, site_id):
         # Django 1.4 doesn't accept 'None' as a tag value and resolve to ''
         # So we need to force it to None again
         if not root_level and root_level != 0:
@@ -219,7 +228,10 @@ class ShowSubMenu(InclusionTag):
         except KeyError:
             return {'template': 'menu/empty.html'}
 
-        menu_renderer = context.get('cms_menu_renderer')
+        if not site_id:
+            site_id = get_site(context).id
+
+        menu_renderer = context.get('cms_menu_renderer_%s' % site_id)
 
         if not menu_renderer:
             menu_renderer = menu_pool.get_renderer(request)
@@ -279,9 +291,10 @@ class ShowBreadcrumb(InclusionTag):
         Argument('start_level', default=0, required=False),
         Argument('template', default='menu/breadcrumb.html', required=False),
         Argument('only_visible', default=True, required=False),
+        IntegerArgument('site_id', default=None, required=False),
     )
 
-    def get_context(self, context, start_level, template, only_visible):
+    def get_context(self, context, start_level, template, only_visible, site_id):
         try:
             # If there's an exception (500), default context_processors may not be called.
             request = context['request']
@@ -297,7 +310,10 @@ class ShowBreadcrumb(InclusionTag):
             only_visible = bool(only_visible)
         ancestors = []
 
-        menu_renderer = context.get('cms_menu_renderer')
+        if not site_id:
+            site_id = get_site(context).id
+
+        menu_renderer = context.get('cms_menu_renderer_%s' % site_id)
 
         if not menu_renderer:
             menu_renderer = menu_pool.get_renderer(request)

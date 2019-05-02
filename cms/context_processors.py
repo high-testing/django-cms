@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
 from django.utils import lru_cache
 from django.utils.functional import lazy
+from django.contrib.sites.models import Site
 
 from cms.utils.conf import get_cms_setting
 from cms.utils.page import get_page_template_from_request
@@ -24,8 +25,9 @@ def cms_settings(request):
     # lazy() does not memoize results, is why lru_cache is needed.
     _get_menu_renderer = lazy(_get_menu_renderer, MenuRenderer)
 
+    site_id = Site.objects.get_current(request).id
     return {
-        'cms_menu_renderer': _get_menu_renderer(),
+        'cms_menu_renderer_%s' % site_id: _get_menu_renderer(),
         'CMS_MEDIA_URL': get_cms_setting('MEDIA_URL'),
         'CMS_TEMPLATE': lambda: get_page_template_from_request(request),
     }

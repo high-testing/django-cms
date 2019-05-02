@@ -94,7 +94,7 @@ class MenuRenderer(object):
     # By doing this we can be sure that each request has it's
     # private instance that will always have the same attributes.
 
-    def __init__(self, pool, request):
+    def __init__(self, pool, request, site=None):
         self.pool = pool
         # It's important this happens on init
         # because we need to make sure that a menu renderer
@@ -103,8 +103,11 @@ class MenuRenderer(object):
         self.menus = pool.get_registered_menus(for_rendering=True)
         self.request = request
         self.request_language = get_language_from_request(request, check_path=True)
-        self.site = Site.objects.get_current(request)
         self.draft_mode_active = use_draft(request)
+        if not site:
+            self.site = Site.objects.get_current(request)
+        else:
+            self.site = site
 
     @property
     def cache_key(self):
@@ -235,12 +238,12 @@ class MenuPool(object):
         self.modifiers = []
         self.discovered = False
 
-    def get_renderer(self, request):
+    def get_renderer(self, request, site=None):
         self.discover_menus()
         # Returns a menu pool wrapper that is bound
         # to the given request and can perform
         # operations based on the given request.
-        return MenuRenderer(pool=self, request=request)
+        return MenuRenderer(pool=self, request=request, site=site)
 
     def discover_menus(self):
         if self.discovered:
@@ -302,9 +305,9 @@ class MenuPool(object):
         return self.modifiers
 
     def clear(self, site_id=None, language=None, all=False):
-        '''
+        """
         This invalidates the cache for a given menu (site_id and language)
-        '''
+        """
         if all:
             cache_keys = CacheKey.objects.get_keys()
         else:
