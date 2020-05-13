@@ -1061,6 +1061,7 @@ class Page(models.Model):
                 for extension in extension_pool.get_page_extensions(canonical):
                     extension.delete()
                 extension_pool.copy_extensions(public_page, canonical)
+                canonical.template = self.template
                 canonical.save()
                 for lang in self.get_languages():
                     canonical.publish(lang)
